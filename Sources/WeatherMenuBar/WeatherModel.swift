@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Network
 
 struct CurrentWeather {
     var temperature: Double
@@ -47,6 +48,8 @@ final class WeatherModel: ObservableObject {
     private var timer: Timer?
     private var refreshTask: Task<Void, Never>?
     private let refreshInterval: TimeInterval = 15 * 60
+    private let pathMonitor = NWPathMonitor()
+    private var networkAvailable = true
 
     init() {
         let defaults = UserDefaults.standard
@@ -59,18 +62,29 @@ final class WeatherModel: ObservableObject {
             manualCity = try? JSONDecoder().decode(ManualCity.self, from: data)
         }
 
-        timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        // Check every minute whether the data is stale, rather than relying on a single
+        // 15-minute timer: a fetch that fails (e.g. Wi-Fi still reconnecting after sleep)
+        // is retried a minute later instead of leaving old data up for another 15 minutes.
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshIfStale() }
         }
+        timer?.tolerance = 10
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            // Give the network a moment to come back after sleep.
+            Task { @MainActor in self?.refreshIfStale() }
+        }
+        // Refresh as soon as the network comes back (after sleep or a Wi-Fi drop).
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let available = path.status == .satisfied
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
-                self?.refresh()
+                guard let self else { return }
+                let cameBack = available && !self.networkAvailable
+                self.networkAvailable = available
+                if cameBack { self.refreshIfStale() }
             }
         }
+        pathMonitor.start(queue: .main)
         refresh()
     }
 
@@ -92,6 +106,15 @@ final class WeatherModel: ObservableObject {
 
     // MARK: - Actions
 
+    /// Refreshes unless a fetch is already running or the last successful one is recent.
+    func refreshIfStale() {
+        guard refreshTask == nil else { return }
+        if let updated = weather?.updated, Date().timeIntervalSince(updated) < refreshInterval - 30 {
+            return
+        }
+        refresh()
+    }
+
     func refresh() {
         refreshTask?.cancel()
         refreshTask = Task {
@@ -109,6 +132,8 @@ final class WeatherModel: ObservableObject {
                 errorMessage = error.localizedDescription
                 status = "Weather unavailable"
             }
+            // A cancelled task has already been replaced by a newer one; leave that alone.
+            if !Task.isCancelled { refreshTask = nil }
         }
     }
 
