@@ -28,6 +28,13 @@ swiftc -O -parse-as-library -swift-version 5 \
     -o "$APP/Contents/MacOS/WeatherMenuBar" \
     Sources/WeatherMenuBar/*.swift
 
+# App icon (shown in Launchpad and Finder), drawn from an SF Symbol.
+swiftc -swift-version 5 ${OVERLAY_FLAGS[@]+"${OVERLAY_FLAGS[@]}"} \
+    -o build/MakeIcon Tools/MakeIcon.swift
+rm -rf build/AppIcon.iconset
+build/MakeIcon build/AppIcon.iconset
+iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" build/AppIcon.iconset
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -37,6 +44,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>Weather Menu Bar</string>
     <key>CFBundleIdentifier</key><string>local.weathermenubar</string>
     <key>CFBundleExecutable</key><string>WeatherMenuBar</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>

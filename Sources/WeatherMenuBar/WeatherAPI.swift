@@ -12,11 +12,11 @@ enum WeatherAPI {
             .init(name: "latitude", value: String(latitude)),
             .init(name: "longitude", value: String(longitude)),
             .init(name: "current", value: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day"),
-            .init(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
+            .init(name: "daily", value: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"),
             .init(name: "temperature_unit", value: fahrenheit ? "fahrenheit" : "celsius"),
             .init(name: "wind_speed_unit", value: fahrenheit ? "mph" : "kmh"),
             .init(name: "timezone", value: "auto"),
-            .init(name: "forecast_days", value: "1"),
+            .init(name: "forecast_days", value: "6"),
         ]
 
         struct Response: Decodable {
@@ -29,14 +29,33 @@ enum WeatherAPI {
                 let is_day: Int
             }
             struct Daily: Decodable {
+                let time: [String]
+                let weather_code: [Int]
                 let temperature_2m_max: [Double]
                 let temperature_2m_min: [Double]
+                let precipitation_probability_max: [Int?]
             }
             let current: Current
             let daily: Daily
         }
 
         let r: Response = try await get(components.url!)
+        // Dates are local to the forecast location; parse them as calendar days.
+        let dayParser = DateFormatter()
+        dayParser.locale = Locale(identifier: "en_US_POSIX")
+        dayParser.timeZone = TimeZone(identifier: "UTC")
+        dayParser.dateFormat = "yyyy-MM-dd"
+        let d = r.daily
+        let forecast = d.time.indices.dropFirst().compactMap { i -> DailyForecast? in
+            guard let date = dayParser.date(from: d.time[i]) else { return nil }
+            return DailyForecast(
+                date: date,
+                code: d.weather_code[i],
+                high: d.temperature_2m_max[i],
+                low: d.temperature_2m_min[i],
+                precipitationChance: d.precipitation_probability_max[i]
+            )
+        }
         return CurrentWeather(
             temperature: r.current.temperature_2m,
             feelsLike: r.current.apparent_temperature,
@@ -46,7 +65,8 @@ enum WeatherAPI {
             windSpeed: r.current.wind_speed_10m,
             code: r.current.weather_code,
             isDay: r.current.is_day == 1,
-            updated: Date()
+            updated: Date(),
+            forecast: forecast
         )
     }
 

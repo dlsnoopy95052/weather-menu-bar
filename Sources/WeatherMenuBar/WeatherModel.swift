@@ -12,8 +12,24 @@ struct CurrentWeather {
     var code: Int
     var isDay: Bool
     var updated: Date
+    var forecast: [DailyForecast]
 
     var condition: String { WeatherCode.description(code) }
+}
+
+struct DailyForecast {
+    /// Midnight UTC of the forecast day (the API reports days in the location's time zone).
+    var date: Date
+    var code: Int
+    var high: Double
+    var low: Double
+    var precipitationChance: Int?
+
+    var dayName: String {
+        var style = Date.FormatStyle().weekday(.abbreviated)
+        style.timeZone = TimeZone(identifier: "UTC")!
+        return date.formatted(style)
+    }
 }
 
 struct ManualCity: Codable {
