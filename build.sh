@@ -56,8 +56,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc sign so Location Services and Launch at Login work.
-codesign --force --sign - "$APP"
+# Prefer a stable local identity so macOS keeps privacy grants and doesn't register a new login item per build.
+IDENTITY="PictureViewer Local Signing"
+if security find-identity -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+  codesign --force --sign "$IDENTITY" "$APP"
+else
+  codesign --force --sign - "$APP"
+fi
 echo "Built $APP"
 
 if [[ "${1:-}" == "--install" ]]; then
